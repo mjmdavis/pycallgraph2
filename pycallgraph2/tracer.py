@@ -22,7 +22,7 @@ class SynchronousTracer(object):
         self.config = config
 
     def tracer(self, frame, event, arg):
-        self.processor.process(frame, event, self.memory())
+        self.processor.process(frame, event, arg, self.memory())
         return self.tracer
 
     def memory(self):
@@ -31,10 +31,10 @@ class SynchronousTracer(object):
             return int(memory_usage(-1, 0)[0] * 1000000)
 
     def start(self):
-        sys.settrace(self.tracer)
+        sys.setprofile(self.tracer)
 
     def stop(self):
-        sys.settrace(None)
+        sys.setprofile(None)
 
     def done(self):
         pass
@@ -57,7 +57,7 @@ class AsynchronousTracer(SynchronousTracer):
 
 class TraceProcessor(Thread):
     """
-    Contains a callback used by sys.settrace, which collects information about
+    Contains a callback used by sys.setprofile, which collects information about
     function call count, time taken, etc.
     """
 
@@ -132,7 +132,7 @@ class TraceProcessor(Thread):
             time.sleep(0.1)
         self.keep_going = False
 
-    def process(self, frame, event, memory=None):
+    def process(self, frame, event, arg, memory=None): 
         """This function processes a trace result. Keeps track of
         relationships between calls.
         """
@@ -157,7 +157,7 @@ class TraceProcessor(Thread):
                     self.func_memory_out_max, self.func_memory_out[full_name]
                 )
 
-        if event == 'call':
+        if event in ['call', 'c_call']:
             keep = True
             code = frame.f_code
 
@@ -208,7 +208,6 @@ class TraceProcessor(Thread):
 
             # Store the call information
             if keep:
-
                 if self.call_stack:
                     src_func = self.call_stack[-1]
                 else:
@@ -232,7 +231,7 @@ class TraceProcessor(Thread):
                 self.call_stack.append('')
                 self.call_stack_timer.append(None)
 
-        if event == 'return':
+        if event in ['return', 'c_return']:
 
             self.previous_event_return = True
 
@@ -272,7 +271,8 @@ class TraceProcessor(Thread):
         Returns True if the file_name is in the lib directory. Used to check
         if a function is in the standard library or not.
         """
-        return file_name.lower().startswith(self.lib_path)
+        file_name_lower = file_name.lower()
+        return file_name_lower.startswith(self.lib_path) and 'site-packages' not in file_name_lower
 
     def __getstate__(self):
         """Used for when creating a pickle. Certain instance variables can't
